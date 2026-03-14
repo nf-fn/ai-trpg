@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI TRPG</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Setup Screen -->
+    <div id="setup-screen">
+      <h1>AI TRPG</h1>
+      <p>AIがゲームマスターとなるTRPGセッション</p>
+      <div class="form-group">
+        <label for="rule-select">ルール</label>
+        <select id="rule-select"></select>
+      </div>
+      <div class="form-group">
+        <label for="scenario-select">シナリオ</label>
+        <select id="scenario-select"></select>
+      </div>
+      <button id="start-btn">セッション開始</button>
+    </div>
+
+    <!-- Session Screen -->
+    <div id="session-screen" hidden>
+      <div id="chat-log"></div>
+      <div id="input-area">
+        <button id="record-btn" title="押して話す">🎤</button>
+        <input type="text" id="text-input" placeholder="行動を入力...">
+        <button id="send-btn">送信</button>
+      </div>
+      <div id="status-bar">
+        <span id="connection-status">切断中</span>
+        <span id="recording-status"></span>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

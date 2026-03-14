@@ -1,0 +1,14 @@
+ollama:
+  url: "http://localhost:11434"
+  model: "gemma2"
+  timeout: 60s
+
+voicevox:
+  url: "http://localhost:50021"
+  speaker: 1
+
+whisper:
+  model: "base"
+
+server:
+  port: 8080

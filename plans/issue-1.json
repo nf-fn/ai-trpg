@@ -1,0 +1,67 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "description": "Intent: Goプロジェクトの初期セットアップとエントリポイント作成\nLocation: go.mod, cmd/server/main.go, config.yaml\nBehavior:\n- go mod init で初期化\n- config.yaml を読み込む設定構造体を定義\n- HTTPサーバの起動とgraceful shutdownの骨格を実装\n- config.yaml のサンプルファイルを作成（ollama.url, voicevox.url, ollama.model, voicevox.speaker, whisper.model）\nConstraints:\n- 外部依存は gopkg.in/yaml.v3 と gorilla/websocket のみ\n- main.go はサーバ起動のみ、ロジックは internal/ に委譲\nVerification: go build ./cmd/server/",
+      "files": ["go.mod", "cmd/server/main.go", "config.yaml", "internal/server/config.go"],
+      "dependencies": [],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 2,
+      "description": "Intent: Ollama APIクライアントの実装\nLocation: internal/ollama/client.go, internal/ollama/client_test.go\nBehavior:\n- Ollama /api/chat エンドポイントへのストリーミングリクエスト送信\n- メッセージ履歴（role: system/user/assistant）を受け取り、リクエストボディを構築\n- ストリーミングレスポンスを逐次読み取り、完全なテキスト応答を返す\n- インターフェース OllamaClient を定義し、テスト時にモック可能にする\nConstraints:\n- HTTP通信のみ、外部ライブラリ不要（net/http）\n- タイムアウト設定を設定可能にする\nVerification: go test ./internal/ollama/",
+      "files": ["internal/ollama/client.go", "internal/ollama/client_test.go"],
+      "dependencies": [1],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 3,
+      "description": "Intent: VOICEVOX APIクライアントの実装\nLocation: internal/voicevox/client.go, internal/voicevox/client_test.go\nBehavior:\n- /audio_query にテキストとspeaker IDを送信し、クエリJSONを取得\n- /synthesis にクエリJSONを送信し、WAVバイナリを取得\n- 2段階をまとめた Synthesize(text, speaker) -> []byte メソッドを提供\n- インターフェース VoicevoxClient を定義し、テスト時にモック可能にする\nConstraints:\n- HTTP通信のみ（net/http）\n- 返却する音声は WAV 形式のバイト列そのまま\nVerification: go test ./internal/voicevox/",
+      "files": ["internal/voicevox/client.go", "internal/voicevox/client_test.go"],
+      "dependencies": [1],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 4,
+      "description": "Intent: GMプロンプト構築・会話管理モジュールの実装\nLocation: internal/gm/engine.go, internal/gm/engine_test.go, rules/example.yaml, scenarios/example.yaml\nBehavior:\n- rules/*.yaml と scenarios/*.yaml を読み込む\n- ルールとシナリオ内容をシステムプロンプトに注入したメッセージ履歴を構築\n- プレイヤー発言を追加し、会話履歴を管理する（メモリ内スライス）\n- Ollama向けのメッセージ配列を生成する\n- サンプルのルールYAMLとシナリオYAMLを作成\nConstraints:\n- 会話履歴はセッション中のみ保持（永続化しない）\n- ルール・シナリオのYAML構造はシンプルに（name, description, content程度）\nVerification: go test ./internal/gm/",
+      "files": ["internal/gm/engine.go", "internal/gm/engine_test.go", "rules/example.yaml", "scenarios/example.yaml"],
+      "dependencies": [1],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 5,
+      "description": "Intent: WebSocketハンドラの実装（テキスト受信 → GM応答 → 音声返却）\nLocation: internal/server/websocket.go, internal/server/websocket_test.go\nBehavior:\n- gorilla/websocket でアップグレード\n- クライアントからJSON受信: {\"type\":\"message\", \"text\":\"...\"}\n- GM engine にテキストを渡し、Ollama で応答生成\n- VOICEVOX で音声合成\n- クライアントへJSON+バイナリ返却: テキストメッセージ {\"type\":\"response\", \"text\":\"...\"} の後にバイナリメッセージ（WAVデータ）\n- セッション開始時にルール/シナリオ選択を受け付ける: {\"type\":\"start\", \"rule\":\"...\", \"scenario\":\"...\"}\nConstraints:\n- 1接続=1セッション、同時接続は考慮しなくてよい\n- OllamaClient, VoicevoxClient はインターフェース経由で注入\nVerification: go test ./internal/server/",
+      "files": ["internal/server/websocket.go", "internal/server/websocket_test.go"],
+      "dependencies": [2, 3, 4],
+      "estimated_complexity": "high"
+    },
+    {
+      "id": 6,
+      "description": "Intent: 静的ファイル配信とHTTPルーティングの実装\nLocation: internal/server/routes.go\nBehavior:\n- / で web/ 以下の静的ファイルを配信\n- /ws でWebSocketハンドラに接続\n- /api/rules で利用可能ルール一覧をJSON返却\n- /api/scenarios で利用可能シナリオ一覧をJSON返却\n- whisperモデルファイルの配信（web/whisper/以下）\nConstraints:\n- embed パッケージで web/ を埋め込むか、ファイルパス指定で配信するか判断が必要 → 開発中はファイルパス指定、本番は embed\n- CORSは不要（同一オリジン）\nVerification: go build ./cmd/server/ && curl localhost:8080/api/rules",
+      "files": ["internal/server/routes.go"],
+      "dependencies": [5],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 7,
+      "description": "Intent: フロントエンド - UIレイアウトとWebSocket通信の実装\nLocation: web/index.html, web/style.css, web/app.js\nBehavior:\n- チャットログ表示エリア（GM発言とプレイヤー発言を区別表示）\n- セッション開始画面（ルール/シナリオ選択ドロップダウン、/api/rules, /api/scenariosから取得）\n- 録音ボタン（押して話す）\n- テキスト入力欄（キーボードでも入力可能）\n- WebSocket接続管理（接続・切断・再接続）\n- サーバからのテキストメッセージをチャットログに表示\n- サーバからのバイナリメッセージ（WAV）をAudio APIで再生\nConstraints:\n- フレームワーク不使用（バニラJS）\n- モバイル対応は不要\nVerification: ブラウザで http://localhost:8080 を開き、UI表示を確認",
+      "files": ["web/index.html", "web/style.css", "web/app.js"],
+      "dependencies": [6],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 8,
+      "description": "Intent: フロントエンド - whisper.wasm によるブラウザ内音声認識の統合\nLocation: web/app.js, web/whisper/ ディレクトリ\nBehavior:\n- whisper.cpp の WASM ビルド成果物（main.js, main.wasm）を web/whisper/ に配置する手順をREADMEに記載\n- MediaRecorder API でマイク音声をキャプチャ\n- 録音データを whisper.wasm に渡して文字起こし\n- 文字起こし結果をWebSocketでサーバに送信\n- 録音中のUI表示（録音インジケータ）\nConstraints:\n- whisper.wasm のビルド成果物はリポジトリに含めない（.gitignoreに追加、セットアップスクリプトで取得）\n- モデルファイル（ggml-base.bin）もリポジトリに含めない\n- Web Audio API で16kHz モノラル PCM に変換してから whisper に渡す\nVerification: ブラウザでマイク許可後、発話が文字起こしされることを確認",
+      "files": ["web/app.js", "web/whisper/.gitkeep", "scripts/setup-whisper.sh"],
+      "dependencies": [7],
+      "estimated_complexity": "high"
+    },
+    {
+      "id": 9,
+      "description": "Intent: Playwright E2Eテストのセットアップと基本テスト\nLocation: e2e/playwright.config.ts, e2e/session.spec.ts, package.json\nBehavior:\n- Playwright + TypeScript のテスト環境セットアップ\n- テスト前にGoサーバを起動するglobalSetup\n- 基本テスト: ページ表示、ルール/シナリオ一覧取得、WebSocket接続\n- テキスト入力によるセッションテスト: テキスト入力 → 送信 → GM応答テキスト表示 → 音声再生の検証\nConstraints:\n- whisper.wasm のSTTテストはスコープ外（テキスト入力で代替）\n- Ollama/VOICEVOX が起動している環境でのみ実行可能\nVerification: npx playwright test",
+      "files": ["e2e/playwright.config.ts", "e2e/session.spec.ts", "package.json"],
+      "dependencies": [7],
+      "estimated_complexity": "medium"
+    }
+  ]
+}
