@@ -37,7 +37,7 @@ func (m *mockOllamaClient) ChatStream(_ context.Context, messages []ollama.Messa
 
 func TestPlayerAction(t *testing.T) {
 	mock := &mockOllamaClient{response: "あなたは暗い洞窟の入り口に立っている。"}
-	engine := NewEngine(mock)
+	engine := NewEngine(mock, 0)
 
 	rule := &Rule{Name: "test", Content: "テスト用ルール"}
 	scenario := &Scenario{Name: "test", Content: "テスト用シナリオ"}
@@ -68,7 +68,7 @@ func TestPlayerAction(t *testing.T) {
 
 func TestPlayerActionError(t *testing.T) {
 	mock := &mockOllamaClient{err: fmt.Errorf("connection refused")}
-	engine := NewEngine(mock)
+	engine := NewEngine(mock, 0)
 	engine.StartSession(nil, nil)
 
 	_, err := engine.PlayerAction(context.Background(), "test")
@@ -84,7 +84,7 @@ func TestPlayerActionError(t *testing.T) {
 
 func TestConversationHistory(t *testing.T) {
 	mock := &mockOllamaClient{}
-	engine := NewEngine(mock)
+	engine := NewEngine(mock, 0)
 	engine.StartSession(nil, nil)
 
 	mock.response = "応答1"
@@ -101,7 +101,7 @@ func TestConversationHistory(t *testing.T) {
 
 func TestPlayerActionStream(t *testing.T) {
 	mock := &mockOllamaClient{response: "洞窟は暗い。"}
-	engine := NewEngine(mock)
+	engine := NewEngine(mock, 0)
 	engine.StartSession(nil, nil)
 
 	var chunks []string
@@ -126,7 +126,7 @@ func TestPlayerActionStream(t *testing.T) {
 
 func TestPlayerActionStreamError(t *testing.T) {
 	mock := &mockOllamaClient{err: fmt.Errorf("timeout")}
-	engine := NewEngine(mock)
+	engine := NewEngine(mock, 0)
 	engine.StartSession(nil, nil)
 
 	_, err := engine.PlayerActionStream(context.Background(), "test", nil)
@@ -135,6 +135,77 @@ func TestPlayerActionStreamError(t *testing.T) {
 	}
 	if len(engine.history) != 1 {
 		t.Errorf("expected 1 message (system only), got %d", len(engine.history))
+	}
+}
+
+func TestSlidingWindowPruning(t *testing.T) {
+	mock := &mockOllamaClient{}
+	// maxHistory=4 means keep system + last 4 messages (2 rounds)
+	engine := NewEngine(mock, 4)
+	engine.StartSession(nil, nil)
+
+	// 3 rounds = 6 user/assistant messages, should be pruned to 4
+	for i := 0; i < 3; i++ {
+		mock.response = fmt.Sprintf("応答%d", i)
+		engine.PlayerAction(context.Background(), fmt.Sprintf("行動%d", i))
+	}
+
+	// system + last 4 messages = 5 total
+	if len(engine.history) != 5 {
+		t.Fatalf("expected 5 messages (system + 4), got %d", len(engine.history))
+	}
+	if engine.history[0].Role != "system" {
+		t.Errorf("expected system at index 0, got %s", engine.history[0].Role)
+	}
+	// Last messages should be from round 2 and 3
+	if engine.history[1].Content != "行動1" {
+		t.Errorf("expected '行動1', got '%s'", engine.history[1].Content)
+	}
+}
+
+func TestSlidingWindowKeepsSystemPrompt(t *testing.T) {
+	mock := &mockOllamaClient{response: "ok"}
+	engine := NewEngine(mock, 2)
+	engine.StartSession(&Rule{Name: "r", Content: "rule"}, nil)
+
+	for i := 0; i < 5; i++ {
+		engine.PlayerAction(context.Background(), "action")
+	}
+
+	if engine.history[0].Role != "system" {
+		t.Errorf("system prompt lost, got role '%s'", engine.history[0].Role)
+	}
+	// system + 2 = 3
+	if len(engine.history) != 3 {
+		t.Errorf("expected 3 messages, got %d", len(engine.history))
+	}
+}
+
+func TestSlidingWindowDisabledWhenZero(t *testing.T) {
+	mock := &mockOllamaClient{response: "ok"}
+	engine := NewEngine(mock, 0)
+	engine.StartSession(nil, nil)
+
+	for i := 0; i < 10; i++ {
+		engine.PlayerAction(context.Background(), "action")
+	}
+
+	// system + 10 user + 10 assistant = 21
+	if len(engine.history) != 21 {
+		t.Errorf("expected 21 messages, got %d", len(engine.history))
+	}
+}
+
+func TestSlidingWindowNoPruningWhenUnderLimit(t *testing.T) {
+	mock := &mockOllamaClient{response: "ok"}
+	engine := NewEngine(mock, 4)
+	engine.StartSession(nil, nil)
+
+	engine.PlayerAction(context.Background(), "action")
+
+	// system + 1 user + 1 assistant = 3, under limit of 4
+	if len(engine.history) != 3 {
+		t.Errorf("expected 3 messages, got %d", len(engine.history))
 	}
 }
 

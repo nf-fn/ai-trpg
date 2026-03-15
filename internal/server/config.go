@@ -13,6 +13,11 @@ type Config struct {
 	Whisper  WhisperConfig  `yaml:"whisper"`
 	Server   ServerConfig   `yaml:"server"`
 	Paths    PathsConfig    `yaml:"paths"`
+	GM       GMConfig       `yaml:"gm"`
+}
+
+type GMConfig struct {
+	MaxHistory int `yaml:"max_history"`
 }
 
 type PathsConfig struct {
@@ -68,6 +73,9 @@ func LoadConfig(path string) (*Config, error) {
 			Web:       "web",
 			Rules:     "rules",
 			Scenarios: "scenarios",
+		},
+		GM: GMConfig{
+			MaxHistory: 20,
 		},
 	}
 

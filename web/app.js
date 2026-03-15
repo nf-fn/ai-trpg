@@ -9,6 +9,13 @@ let isPlaying = false;
 let isRecording = false;
 let isStreaming = false;
 let currentGmMessage = null;
+let shouldReconnect = false;
+let reconnectDelay = 1000;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+let lastStartParams = null;
+const MAX_RECONNECT_DELAY = 30000;
+const MAX_RECONNECT_ATTEMPTS = 10;
 let whisperReady = false;
 let whisperWorker = null;
 let audioContext = null;
@@ -93,15 +100,42 @@ async function init() {
 }
 
 // --- WebSocket ---
-function connectWebSocket() {
+function connectWebSocket(isReconnect = false) {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   ws = new WebSocket(`${protocol}//${location.host}/ws`);
-
   ws.binaryType = "arraybuffer";
 
+  ws.onopen = () => {
+    connectionStatus.textContent = "接続中";
+    connectionStatus.className = "connected";
+    reconnectDelay = 1000;
+    reconnectAttempts = 0;
+
+    if (isReconnect && lastStartParams) {
+      // Re-initialize server-side session
+      ws.send(JSON.stringify(lastStartParams));
+      addMessage("system", "", "再接続しました");
+      // Reset streaming state
+      isStreaming = false;
+      currentGmMessage = null;
+      audioQueue = [];
+      isPlaying = false;
+      setInputEnabled(false);
+    }
+  };
+
   ws.onclose = () => {
-    connectionStatus.textContent = "切断";
     connectionStatus.classList.remove("connected");
+    if (shouldReconnect && !sessionScreen.hidden) {
+      scheduleReconnect();
+    } else {
+      connectionStatus.textContent = "切断";
+    }
   };
 
   ws.onmessage = (event) => {
@@ -112,6 +146,26 @@ function connectWebSocket() {
       handleServerMessage(msg);
     }
   };
+}
+
+function scheduleReconnect() {
+  reconnectAttempts++;
+  if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+    connectionStatus.textContent = "接続失敗 - 再読み込みしてください";
+    connectionStatus.className = "failed";
+    setInputEnabled(false);
+    return;
+  }
+
+  connectionStatus.textContent = `再接続中...(${reconnectAttempts}回目)`;
+  connectionStatus.className = "reconnecting";
+  setInputEnabled(false);
+
+  reconnectTimer = setTimeout(() => {
+    connectWebSocket(true);
+  }, reconnectDelay);
+
+  reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
 }
 
 function handleServerMessage(msg) {
@@ -307,20 +361,20 @@ function setInputEnabled(enabled) {
 
 // --- Event Listeners ---
 startBtn.addEventListener("click", () => {
-  connectWebSocket();
+  lastStartParams = {
+    type: "start",
+    rule: ruleSelect.value,
+    scenario: scenarioSelect.value,
+  };
+  shouldReconnect = true;
 
-  ws.onopen = () => {
-    connectionStatus.textContent = "接続中";
-    connectionStatus.classList.add("connected");
+  connectWebSocket(false);
 
-    ws.send(
-      JSON.stringify({
-        type: "start",
-        rule: ruleSelect.value,
-        scenario: scenarioSelect.value,
-      })
-    );
-
+  // Override onopen for initial connection (show session screen)
+  const origOnopen = ws.onopen;
+  ws.onopen = (e) => {
+    origOnopen(e);
+    ws.send(JSON.stringify(lastStartParams));
     setupScreen.hidden = true;
     sessionScreen.hidden = false;
     setInputEnabled(false);

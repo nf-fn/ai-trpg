@@ -28,7 +28,7 @@ func main() {
 
 	ollamaClient := ollama.NewClient(cfg.Ollama.URL, cfg.Ollama.Model, cfg.Ollama.Timeout)
 	voicevoxClient := voicevox.NewClient(cfg.Voicevox.URL, cfg.Voicevox.Speaker)
-	gmEngine := gm.NewEngine(ollamaClient)
+	gmEngine := gm.NewEngine(ollamaClient, cfg.GM.MaxHistory)
 
 	srv := server.New(cfg, ollamaClient, voicevoxClient, gmEngine)
 

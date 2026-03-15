@@ -38,7 +38,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	engine := gm.NewEngine(s.ollamaClient)
+	engine := gm.NewEngine(s.ollamaClient, s.config.GM.MaxHistory)
 	wsMu := &sync.Mutex{} // Protect concurrent writes
 
 	for {

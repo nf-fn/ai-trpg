@@ -208,6 +208,24 @@ body {
   color: #4caf50;
 }
 
+#connection-status.reconnecting {
+  color: #ff9800;
+}
+
+#connection-status.failed {
+  color: #ff4444;
+}
+
 #recording-status {
   color: #e94560;
+}
+
+/* System messages */
+.message.system {
+  align-self: center;
+  background: #2a2a3e;
+  color: #888;
+  font-size: 0.85rem;
+  padding: 6px 16px;
+  border-radius: 20px;
 }

@@ -26,13 +26,15 @@ type Scenario struct {
 type Engine struct {
 	ollamaClient ollama.Client
 	history      []ollama.Message
+	maxHistory   int
 	rule         *Rule
 	scenario     *Scenario
 }
 
-func NewEngine(ollamaClient ollama.Client) *Engine {
+func NewEngine(ollamaClient ollama.Client, maxHistory int) *Engine {
 	return &Engine{
 		ollamaClient: ollamaClient,
+		maxHistory:   maxHistory,
 	}
 }
 
@@ -62,6 +64,8 @@ func (e *Engine) PlayerAction(ctx context.Context, text string) (string, error) 
 		Content: response,
 	})
 
+	e.pruneHistory()
+
 	return response, nil
 }
 
@@ -82,7 +86,22 @@ func (e *Engine) PlayerActionStream(ctx context.Context, text string, onChunk fu
 		Content: response,
 	})
 
+	e.pruneHistory()
+
 	return response, nil
+}
+
+// pruneHistory keeps system prompt (index 0) + last maxHistory messages.
+func (e *Engine) pruneHistory() {
+	if e.maxHistory <= 0 {
+		return
+	}
+	// history[0] is system, rest are user/assistant messages
+	msgs := len(e.history) - 1
+	if msgs <= e.maxHistory {
+		return
+	}
+	e.history = append(e.history[:1], e.history[len(e.history)-e.maxHistory:]...)
 }
 
 func (e *Engine) buildSystemPrompt() string {

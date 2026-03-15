@@ -14,6 +14,9 @@ whisper:
 server:
   port: 8080
 
+gm:
+  max_history: 20
+
 paths:
   web: "web"
   rules: "rules"
