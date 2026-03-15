@@ -1,0 +1,39 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "description": "Intent: config.yamlにpathsセクションを追加しweb/rules/scenariosの各ディレクトリパスを設定可能にする。\nLocation: config.yaml\nBehavior:\n- pathsキー配下にweb、rules、scenariosの3つのキーを追加\n- 値はそれぞれ現在のハードコード値と同じ\nConstraints:\n- 既存のollama/voicevox/whisper/serverセクションの構造を変更しない\nVerification: YAMLパーサーで読み込みpaths値が正しく取得できること",
+      "files": ["config.yaml"],
+      "dependencies": [],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 2,
+      "description": "Intent: Config構造体にPathsConfigを追加しYAMLのpathsセクションをGoの構造体にマッピングする。\nLocation: internal/server/config.go\nBehavior:\n- PathsConfig構造体をWeb, Rules, Scenariosの3フィールド(string型、yamlタグ付き)で定義\n- Config構造体にPaths PathsConfigフィールドを追加\n- LoadConfig内のデフォルト値にPaths: PathsConfig{Web: \"web\", Rules: \"rules\", Scenarios: \"scenarios\"}を追加\nConstraints:\n- 既存のConfig構造体フィールドを変更しない\n- config.yamlにpathsが未指定の場合もデフォルト値が保持されること\nVerification: go build ./internal/server/",
+      "files": ["internal/server/config.go"],
+      "dependencies": [1],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 3,
+      "description": "Intent: routes.goのハードコードされた3箇所のパス文字列をConfig経由の値に置き換える。\nLocation: internal/server/routes.go\nBehavior:\n- http.Dir(\"web\") → http.Dir(s.config.Paths.Web)\n- gm.LoadRules(\"rules\") → gm.LoadRules(s.config.Paths.Rules)\n- gm.LoadScenarios(\"scenarios\") → gm.LoadScenarios(s.config.Paths.Scenarios)\nConstraints:\n- APIのエンドポイントパス(/api/rules等)は変更しない\nVerification: go build ./cmd/server/",
+      "files": ["internal/server/routes.go"],
+      "dependencies": [2],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 4,
+      "description": "Intent: websocket.goのハードコードされた2箇所のパス文字列をConfig経由の値に置き換える。\nLocation: internal/server/websocket.go\nBehavior:\n- handleStart内の gm.LoadRules(\"rules\") → gm.LoadRules(s.config.Paths.Rules)\n- handleStart内の gm.LoadScenarios(\"scenarios\") → gm.LoadScenarios(s.config.Paths.Scenarios)\nConstraints:\n- WebSocket接続のハンドリングロジックやメッセージ形式は変更しない\nVerification: go build ./cmd/server/",
+      "files": ["internal/server/websocket.go"],
+      "dependencies": [2],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 5,
+      "description": "Intent: パス設定の変更が正しく動作することを検証するテストを追加する。\nLocation: internal/server/config_test.go（新規作成）\nBehavior:\n- config.yamlにpathsセクションがない場合にデフォルト値が設定されるテスト\n- カスタム値を指定した場合にその値が反映されるテスト\n- 一部のみ指定した場合に未指定フィールドがデフォルト値を保持するテスト\nConstraints:\n- テスト用の一時YAMLファイルはt.TempDirで作成\n- 外部サービスへの依存は不要\nVerification: go test ./internal/server/ -v",
+      "files": ["internal/server/config_test.go"],
+      "dependencies": [2],
+      "estimated_complexity": "medium"
+    }
+  ]
+}

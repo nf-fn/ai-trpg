@@ -1,0 +1,32 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "description": "Intent: Ollamaクライアントにストリーミングコールバック付きのChatStreamメソッドを追加する。\nLocation: internal/ollama/client.go（Clientインターフェース、client構造体）\nBehavior:\n- Clientインターフェースに ChatStream(ctx context.Context, messages []Message, onChunk func(token string)) (string, error) を追加\n- 既存のChat()と同様にstream:trueでOllama APIを呼び出す\n- decoderループ内で各chunkのMessage.ContentをonChunkコールバックに渡す\n- 最終的には全テキストを結合して返す\nConstraints:\n- 既存のChat()メソッドとClientインターフェースの後方互換性を維持\n- onChunkコールバックがエラーを返した場合はストリームを中断\nVerification: go test ./internal/ollama/",
+      "files": ["internal/ollama/client.go", "internal/ollama/client_test.go"],
+      "dependencies": [],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 2,
+      "description": "Intent: GM Engineにストリーミング対応のPlayerActionStreamメソッドを追加する。\nLocation: internal/gm/engine.go\nBehavior:\n- PlayerActionStream(ctx context.Context, text string, onChunk func(token string)) (string, error) を追加\n- 内部でollamaClient.ChatStreamを呼び出しトークンをonChunkに転送\n- 完了後、historyにassistantメッセージを追加\nConstraints:\n- 既存のPlayerAction()は変更しない\n- エラー発生時のhistoryロールバック処理は既存パターンを踏襲\n- 文の区切り判定はこのレイヤーでは行わない\nVerification: go test ./internal/gm/",
+      "files": ["internal/gm/engine.go", "internal/gm/engine_test.go"],
+      "dependencies": [1],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 3,
+      "description": "Intent: 文境界バッファリング＋VOICEVOX合成＋WebSocket送信のストリーミングレスポンス処理を実装する。\nLocation: internal/server/websocket.go\nBehavior:\n- sendStreamingResponse関数を実装\n- onChunkコールバック内でテキストをバッファに蓄積し句点「。」検出で文を切り出す\n- 切り出した文に対してvoicevoxClient.Synthesizeを呼ぶ\n- type:\"chunk\"のJSONメッセージ（text, index付き）を送信した直後にWAVバイナリを送信\n- 全チャンク処理完了後にtype:\"done\"メッセージを送信\n- バッファに残った未送信テキストも最後のchunkとして処理\nConstraints:\n- outgoingMessage構造体にIndex intフィールドを追加\n- VOICEVOX合成エラー時はテキストのみのchunkを送信し音声なしで継続\n- WebSocket書き込みはsync.Mutexで保護\n- handleStart/handleMessageの両方で新しいストリーミング処理を使う\nVerification: go build ./cmd/server/",
+      "files": ["internal/server/websocket.go"],
+      "dependencies": [1, 2],
+      "estimated_complexity": "high"
+    },
+    {
+      "id": 4,
+      "description": "Intent: クライアント側でchunk/doneメッセージを処理しテキストをインクリメンタルに表示しつつ音声を順次再生する。\nLocation: web/app.js\nBehavior:\n- handleServerMessageにtype:\"chunk\"とtype:\"done\"のケースを追加\n- chunk受信時: 現在のGM応答用DOM要素がなければ新規作成し、受信textをコンテンツに追記\n- 直後のBinaryMessage(WAV)をaudioQueueにキューイング\n- done受信時: 入力を再有効化\n- 既存のtype:\"response\"は後方互換のために残す\nConstraints:\n- ストリーミング中フラグ(isStreaming)を導入しBinaryMessageの紐付けを維持\n- audioQueueと再生ロジックは既存のものを活用\n- DOM操作ではスクロール位置を最下部に追従\nVerification: GMの応答が文ごとに段階的に表示され各文の音声が順番に再生されること",
+      "files": ["web/app.js"],
+      "dependencies": [3],
+      "estimated_complexity": "medium"
+    }
+  ]
+}

@@ -6,9 +6,15 @@ ollama:
 voicevox:
   url: "http://localhost:50021"
   speaker: 1
+  timeout: 30s
 
 whisper:
   model: "base"
 
 server:
   port: 8080
+
+paths:
+  web: "web"
+  rules: "rules"
+  scenarios: "scenarios"

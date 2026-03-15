@@ -17,6 +17,7 @@ type Message struct {
 
 type Client interface {
 	Chat(ctx context.Context, messages []Message) (string, error)
+	ChatStream(ctx context.Context, messages []Message, onChunk func(token string)) (string, error)
 }
 
 type client struct {
@@ -47,6 +48,10 @@ type chatResponse struct {
 }
 
 func (c *client) Chat(ctx context.Context, messages []Message) (string, error) {
+	return c.ChatStream(ctx, messages, nil)
+}
+
+func (c *client) ChatStream(ctx context.Context, messages []Message, onChunk func(token string)) (string, error) {
 	reqBody := chatRequest{
 		Model:    c.model,
 		Messages: messages,
@@ -86,6 +91,9 @@ func (c *client) Chat(ctx context.Context, messages []Message) (string, error) {
 			return "", fmt.Errorf("decode response: %w", err)
 		}
 		result += chunk.Message.Content
+		if onChunk != nil {
+			onChunk(chunk.Message.Content)
+		}
 		if chunk.Done {
 			break
 		}

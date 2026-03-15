@@ -65,6 +65,26 @@ func (e *Engine) PlayerAction(ctx context.Context, text string) (string, error) 
 	return response, nil
 }
 
+func (e *Engine) PlayerActionStream(ctx context.Context, text string, onChunk func(token string)) (string, error) {
+	e.history = append(e.history, ollama.Message{
+		Role:    "user",
+		Content: text,
+	})
+
+	response, err := e.ollamaClient.ChatStream(ctx, e.history, onChunk)
+	if err != nil {
+		e.history = e.history[:len(e.history)-1]
+		return "", fmt.Errorf("ollama chat: %w", err)
+	}
+
+	e.history = append(e.history, ollama.Message{
+		Role:    "assistant",
+		Content: response,
+	})
+
+	return response, nil
+}
+
 func (e *Engine) buildSystemPrompt() string {
 	var sb strings.Builder
 

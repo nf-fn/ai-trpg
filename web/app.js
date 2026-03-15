@@ -7,6 +7,8 @@ let ws = null;
 let audioQueue = [];
 let isPlaying = false;
 let isRecording = false;
+let isStreaming = false;
+let currentGmMessage = null;
 let whisperReady = false;
 let whisperWorker = null;
 let audioContext = null;
@@ -115,11 +117,26 @@ function connectWebSocket() {
 function handleServerMessage(msg) {
   switch (msg.type) {
     case "response":
+      // Legacy non-streaming response
       addMessage("gm", "GM", msg.text);
+      setInputEnabled(true);
+      break;
+    case "chunk":
+      isStreaming = true;
+      if (!currentGmMessage) {
+        currentGmMessage = createMessageElement("gm", "GM");
+      }
+      appendToMessage(currentGmMessage, msg.text);
+      break;
+    case "done":
+      isStreaming = false;
+      currentGmMessage = null;
       setInputEnabled(true);
       break;
     case "error":
       addMessage("error", "エラー", msg.text);
+      isStreaming = false;
+      currentGmMessage = null;
       setInputEnabled(true);
       break;
   }
@@ -252,7 +269,7 @@ function stopRecording() {
 }
 
 // --- UI Helpers ---
-function addMessage(type, label, text) {
+function createMessageElement(type, label) {
   const div = document.createElement("div");
   div.className = `message ${type}`;
 
@@ -262,11 +279,24 @@ function addMessage(type, label, text) {
   div.appendChild(labelEl);
 
   const content = document.createElement("div");
-  content.textContent = text;
+  content.className = "content";
   div.appendChild(content);
 
   chatLog.appendChild(div);
   chatLog.scrollTop = chatLog.scrollHeight;
+  return div;
+}
+
+function appendToMessage(msgEl, text) {
+  const content = msgEl.querySelector(".content");
+  content.textContent += text;
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function addMessage(type, label, text) {
+  const el = createMessageElement(type, label);
+  appendToMessage(el, text);
+  return el;
 }
 
 function setInputEnabled(enabled) {

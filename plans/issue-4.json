@@ -1,0 +1,39 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "description": "Intent: VoicevoxConfigにタイムアウト設定を追加し、設定ファイルから読み込めるようにする。\nLocation: internal/server/config.go のVoicevoxConfig構造体\nBehavior:\n- VoicevoxConfigにTimeout time.Durationフィールド（yamlタグ: timeout）を追加\n- LoadConfig関数のデフォルト値にTimeout: 30 * time.Secondを設定\nConstraints:\n- 既存のOllamaConfigのTimeout定義パターンに合わせる\n- デフォルト値は30s（音声合成はLLMより高速なため）\nVerification: go build ./internal/server/",
+      "files": ["internal/server/config.go"],
+      "dependencies": [],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 2,
+      "description": "Intent: config.yamlにvoicevox.timeoutの設定項目を追加する。\nLocation: config.yaml のvoicevoxセクション\nBehavior:\n- voicevoxセクションにtimeout: 30sを追加\nConstraints:\n- 既存のollama.timeoutの記述フォーマット（Go duration形式）に合わせる\nVerification: アプリケーション起動時にconfig.yamlが正常にパースされること",
+      "files": ["config.yaml"],
+      "dependencies": [1],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 3,
+      "description": "Intent: r_context関数を削除しcontext.WithTimeoutを使用してタイムアウト付きコンテキストを生成する。\nLocation: internal/server/websocket.go のr_context関数と呼び出し箇所3箇所\nBehavior:\n- r_context関数を完全に削除\n- handleStartとhandleMessageではs.config.Ollama.Timeoutでcontext.WithTimeoutを生成しengine.PlayerActionに渡す\n- sendResponseではs.config.Voicevox.Timeoutでcontext.WithTimeoutを生成しvoicevoxClient.Synthesizeに渡す\n- deferでcancel関数を呼び出す\nConstraints:\n- ベースコンテキストはcontext.Background()\n- ollama用とvoicevox用のタイムアウトは別々の値を使用\nVerification: r_contextへの参照がコード内に残っていないことをgrepで確認。go build成功",
+      "files": ["internal/server/websocket.go"],
+      "dependencies": [1],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 4,
+      "description": "Intent: タイムアウト発生時にクライアントへ適切なエラーメッセージを返す。\nLocation: internal/server/websocket.go のhandleStart、handleMessage、sendResponseのエラーハンドリング箇所\nBehavior:\n- context.DeadlineExceededをerrors.Isで判定\n- タイムアウトの場合は「GMの応答がタイムアウトしました。再度お試しください」等の専用エラーメッセージをsendErrorで送信\n- タイムアウト以外のエラーは既存の動作を維持\nConstraints:\n- エラーメッセージは日本語でユーザーにわかりやすい表現\n- errorsパッケージのimportを追加\n- sendResponseのvoicevoxタイムアウト時はテキスト送信済みの旨を明記\nVerification: go build ./internal/server/",
+      "files": ["internal/server/websocket.go"],
+      "dependencies": [3],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 5,
+      "description": "Intent: websocket.goの変更に対するユニットテストを追加しタイムアウト動作の正確性を保証する。\nLocation: internal/server/websocket_test.go（新規作成）\nBehavior:\n- ollamaクライアントが遅延してcontext.DeadlineExceededを返すケースのテスト\n- voicevoxクライアントが遅延してタイムアウトするケースのテスト\n- 正常系の回帰テスト\nConstraints:\n- 既存のengine_test.goのモックパターンに従う\n- テスト用のconfig値には短いタイムアウト（例: 1ms）を使用\nVerification: go test ./internal/server/ -v",
+      "files": ["internal/server/websocket_test.go"],
+      "dependencies": [3, 4],
+      "estimated_complexity": "high"
+    }
+  ]
+}

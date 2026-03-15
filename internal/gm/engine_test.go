@@ -21,6 +21,20 @@ func (m *mockOllamaClient) Chat(_ context.Context, messages []ollama.Message) (s
 	return m.response, m.err
 }
 
+func (m *mockOllamaClient) ChatStream(_ context.Context, messages []ollama.Message, onChunk func(token string)) (string, error) {
+	m.received = messages
+	if m.err != nil {
+		return "", m.err
+	}
+	// Simulate streaming by splitting response into runes
+	for _, r := range m.response {
+		if onChunk != nil {
+			onChunk(string(r))
+		}
+	}
+	return m.response, nil
+}
+
 func TestPlayerAction(t *testing.T) {
 	mock := &mockOllamaClient{response: "あなたは暗い洞窟の入り口に立っている。"}
 	engine := NewEngine(mock)
@@ -82,6 +96,45 @@ func TestConversationHistory(t *testing.T) {
 	// system + user1 + assistant1 + user2
 	if len(mock.received) != 4 {
 		t.Fatalf("expected 4 messages, got %d", len(mock.received))
+	}
+}
+
+func TestPlayerActionStream(t *testing.T) {
+	mock := &mockOllamaClient{response: "洞窟は暗い。"}
+	engine := NewEngine(mock)
+	engine.StartSession(nil, nil)
+
+	var chunks []string
+	result, err := engine.PlayerActionStream(context.Background(), "洞窟に入る", func(token string) {
+		chunks = append(chunks, token)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "洞窟は暗い。" {
+		t.Errorf("unexpected result: %s", result)
+	}
+	if len(chunks) == 0 {
+		t.Error("expected chunks, got none")
+	}
+
+	// History should include system + user + assistant
+	if len(engine.history) != 3 {
+		t.Errorf("expected 3 messages, got %d", len(engine.history))
+	}
+}
+
+func TestPlayerActionStreamError(t *testing.T) {
+	mock := &mockOllamaClient{err: fmt.Errorf("timeout")}
+	engine := NewEngine(mock)
+	engine.StartSession(nil, nil)
+
+	_, err := engine.PlayerActionStream(context.Background(), "test", nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if len(engine.history) != 1 {
+		t.Errorf("expected 1 message (system only), got %d", len(engine.history))
 	}
 }
 

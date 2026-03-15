@@ -1,0 +1,39 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "description": "Intent: WebSocket再接続のコアロジックをExponential Backoffで実装する。\nLocation: web/app.js のグローバルstate領域およびconnectWebSocket関数\nBehavior:\n- reconnectDelayMs（初期値1000）、reconnectAttempts、maxReconnectDelayMs（30000）、shouldReconnectフラグをstateとして追加\n- ws.oncloseハンドラでshouldReconnectがtrueの場合にsetTimeoutで再接続を試行\n- 遅延時間をMath.min(delay * 2, maxDelay)で増加\n- 接続成功時にreconnectDelayMsを初期値にリセット\nConstraints:\n- 再接続はセッション画面表示中のみ行う\n- タイマーIDを保持し重複接続を防止\nVerification: WebSocket切断後に1秒→2秒→4秒と倍増し最大30秒で頭打ちになることをコンソールログで確認",
+      "files": ["web/app.js"],
+      "dependencies": [],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 2,
+      "description": "Intent: 接続状態をUIに視覚的にフィードバックする。\nLocation: web/app.js のconnectWebSocket関数内のonclose/onopenハンドラ、web/style.css の#connection-status関連スタイル\nBehavior:\n- 接続状態を「接続中」「再接続中...(N回目)」「接続失敗 - 再読み込みしてください」の3種類で表示\n- CSSクラス .reconnecting（オレンジ色）、.failed（赤色）を追加\n- 再接続中は入力UIを無効化\nConstraints:\n- 既存の.connectedクラスとの整合性を保つ\n- status-barの既存レイアウトを崩さない\nVerification: 切断時にステータス表示がリアルタイムに遷移し再接続成功で「接続中」に戻ることを目視確認",
+      "files": ["web/app.js", "web/style.css"],
+      "dependencies": [1],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 3,
+      "description": "Intent: 再接続成功後にstartメッセージを自動再送しサーバー側のGMエンジンを再初期化する。\nLocation: web/app.js のconnectWebSocket関数およびstartBtnイベントリスナー\nBehavior:\n- startBtnクリック時に選択されたruleとscenarioの値をグローバル変数に保存\n- ws.onopenハンドラを関数として切り出し、再接続時にlastStartParamsが存在すればstartメッセージを自動送信\n- 初回接続と再接続を区別するフラグを導入\nConstraints:\n- lastStartParamsがnullの場合は再送しない\n- 再接続時はsetupScreen/sessionScreenの切り替えは行わない\nVerification: 再接続成功後にGMからの応答が届きセッションが継続可能であることを確認",
+      "files": ["web/app.js"],
+      "dependencies": [1],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 4,
+      "description": "Intent: 再接続時にチャットログが保持されることを保証し、再接続メッセージを表示する。\nLocation: web/app.js、web/style.css\nBehavior:\n- 再接続時にDOM上のchatLog子要素が削除されないことを明示的に保証\n- 「システム: 再接続しました」というメッセージをaddMessageで追加\n- addMessageにsystemタイプを新設し中央寄せ・グレー背景のスタイルをCSSに追加\n- audioQueueは再接続時にクリアする\nConstraints:\n- isPlaying状態もリセットする\nVerification: 切断・再接続を経てもチャットログが全て残り再接続メッセージが正しい位置に表示されること",
+      "files": ["web/app.js", "web/style.css"],
+      "dependencies": [1, 3],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 5,
+      "description": "Intent: WebSocket自動再接続機能のE2Eテストを追加する。\nLocation: e2e/session.spec.ts\nBehavior:\n- セッション開始後にpage.evaluateでws.close()を呼んで強制切断\n- 接続ステータスが「再接続中...」に変わること、その後「接続中」に戻ることを検証\n- チャットログが保持されていることを検証\n- 再接続後にテキスト送信が可能であることを検証\nConstraints:\n- タイムアウトは再接続の遅延を考慮して十分に長く設定する（最低10秒）\nVerification: npx playwright test",
+      "files": ["e2e/session.spec.ts"],
+      "dependencies": [1, 2, 3, 4],
+      "estimated_complexity": "medium"
+    }
+  ]
+}

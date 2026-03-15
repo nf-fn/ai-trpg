@@ -1,0 +1,32 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "description": "Intent: config.yamlにgm.max_historyフィールドを追加し、Config構造体で読み込めるようにする。\nLocation: config.yaml および internal/server/config.go（Config構造体、LoadConfig関数のデフォルト値設定部分）\nBehavior:\n- Config構造体にGMConfig型のフィールドを追加する\n- GMConfig構造体を新規定義し、MaxHistory int フィールドを持たせる\n- LoadConfig内のデフォルト値として MaxHistory: 20 を設定する\n- config.yamlに gm セクションと max_history: 20 を追加する\nConstraints:\n- 既存のOllama/Voicevox/Whisper/Server設定は一切変更しない\n- max_historyが0の場合は制限なし（全履歴保持）として扱う\nVerification: go build ./internal/server/",
+      "files": ["internal/server/config.go", "config.yaml"],
+      "dependencies": [],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 2,
+      "description": "Intent: Engine構造体にmaxHistoryフィールドを追加し、NewEngineで受け取れるようにする。\nLocation: internal/gm/engine.go（Engine構造体、NewEngine関数）\nBehavior:\n- Engine構造体に maxHistory int フィールドを追加する\n- NewEngineのシグネチャを NewEngine(ollamaClient ollama.Client, maxHistory int) *Engine に変更する\n- maxHistoryが0の場合はプルーニングを無効化（無制限）とする\nConstraints:\n- StartSession, buildSystemPrompt, LoadRules, LoadScenariosは変更しない\n- PlayerActionのロジック変更はこのタスクでは行わない\nVerification: go build ./internal/gm/",
+      "files": ["internal/gm/engine.go"],
+      "dependencies": [1],
+      "estimated_complexity": "low"
+    },
+    {
+      "id": 3,
+      "description": "Intent: PlayerAction内にスライディングウィンドウによる履歴プルーニングを実装する。システムプロンプト（history[0]）は常に保持し、直近N件のuser/assistantメッセージのみを残す。\nLocation: internal/gm/engine.go（PlayerAction関数）\nBehavior:\n- assistantメッセージをhistoryに追加した直後にプルーニングを実行する\n- maxHistory > 0 かつ len(history)-1 > maxHistory の場合、history[0]（system）を保持し、末尾からmaxHistory件のメッセージを残す\n- maxHistoryが0の場合はプルーニングをスキップする\nConstraints:\n- システムプロンプト（index 0）は絶対に削除しない\n- エラー時のロールバック処理は既存のまま維持\n- プルーニングはChat成功後のみ行う\nVerification: go build ./internal/gm/",
+      "files": ["internal/gm/engine.go"],
+      "dependencies": [2],
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": 4,
+      "description": "Intent: スライディングウィンドウのプルーニングロジックに対するユニットテストを追加し、既存テストをNewEngineのシグネチャ変更に合わせて修正する。\nLocation: internal/gm/engine_test.go\nBehavior:\n- 既存のNewEngine呼び出し箇所にmaxHistory引数（0 = 無制限）を追加\n- TestSlidingWindowPruning: maxHistory=4で3往復後、mockのreceivedがsystem+直近4メッセージ=5件であることを確認\n- TestSlidingWindowKeepsSystemPrompt: プルーニング後もreceived[0].Roleがsystemであることを確認\n- TestSlidingWindowDisabledWhenZero: maxHistory=0で多数のPlayerActionを実行し全メッセージが保持されることを確認\n- TestSlidingWindowSmallHistory: maxHistory=2で1往復のみの場合プルーニングが発生しないことを確認\nConstraints:\n- mockOllamaClientの構造体は変更しない\nVerification: go test ./internal/gm/ -v",
+      "files": ["internal/gm/engine_test.go"],
+      "dependencies": [3],
+      "estimated_complexity": "medium"
+    }
+  ]
+}
